@@ -40,7 +40,7 @@ def generate_handles(labels, colors, edge='k', alpha=1):
 
 # adapted this question: https://stackoverflow.com/q/32333870
 # answered by SO user Siyh: https://stackoverflow.com/a/35705477
-def scale_bar(ax, length=20, location=(0.92, 0.95)):
+def scale_bar(ax, location=(0.82, 0.95)):
     """
     Create a scale bar in a cartopy GeoAxes.
 
@@ -61,17 +61,34 @@ def scale_bar(ax, length=20, location=(0.92, 0.95)):
     ax : cartopy.mpl.geoaxes.GeoAxes
         the cartopy GeoAxes object
 
+    Create a scale bar with divisions at 1, 5, and 10 km.
     """
-    x0, x1, y0, y1 = ax.get_extent() # get the current extent of the axis
-    sbx = x0 + (x1 - x0) * location[0] # get the right x coordinate of the scale bar
-    sby = y0 + (y1 - y0) * location[1] # get the right y coordinate of the scale bar
+    
+    x0, x1, y0, y1 = ax.get_extent()
+    sbx = x0 + (x1 - x0) * location[0]
+    sby = y0 + (y1 - y0) * location[1]
 
-    ax.plot([sbx, sbx-length*1000], [sby, sby], color='k', linewidth=4, transform=ax.projection) # plot a thick black line
-    ax.plot([sbx-(length/2)*1000, sbx-length*1000], [sby, sby], color='w', linewidth=2, transform=ax.projection) # plot a white line from 0 to halfway
+    start = sbx
+    end = sbx + 10000  # 10 km in metres
 
-    ax.text(sbx, sby-(length/4)*1000, f"{length} km", ha='center', transform=ax.projection, fontsize=6) # add a label at the right side
-    ax.text(sbx-(length/2)*1000, sby-(length/4)*1000, f"{int(length/2)} km", ha='center', transform=ax.projection, fontsize=6) # add a label in the center
-    ax.text(sbx-length*1000, sby-(length/4)*1000, '0 km', ha='center', transform=ax.projection, fontsize=6) # add a label at the left side
+    # alternating bar segments: 0-1, 1-5, 5-10 km
+    ax.plot([start, start + 1000], [sby, sby], color='k', linewidth=4, transform=ax.projection)
+    ax.plot([start + 1000, start + 5000], [sby, sby], color='w', linewidth=4, transform=ax.projection)
+    ax.plot([start + 5000, end], [sby, sby], color='k', linewidth=4, transform=ax.projection)
+
+    # outline over the top so the white segment is visible
+    ax.plot([start, end], [sby, sby], color='k', linewidth=1, transform=ax.projection)
+
+    # ticks
+    for d in [0, 1000, 5000, 10000]:
+        x = start + d
+        ax.plot([x, x], [sby - 250, sby + 250], color='k', linewidth=1, transform=ax.projection)
+
+    # labels
+    ax.text(start, sby - 1200, '0', ha='right', va='top', transform=ax.projection, fontsize=6)
+    ax.text(start + 1000, sby - 1200, '1 km', ha='left', va='top', transform=ax.projection, fontsize=6)
+    ax.text(start + 5000, sby - 1200, '5 km', ha='center', va='top', transform=ax.projection, fontsize=6)
+    ax.text(end, sby - 1200, '10 km', ha='center', va='top', transform=ax.projection, fontsize=6)
 
     return ax
 
@@ -134,8 +151,15 @@ river_feat = ShapelyFeature(rivers['geometry'], # first argument is the geometry
                             linewidth=0.2) # set the linewidth to be 0.2 pt
 ax.add_feature(river_feat) # add the collection of features to the map
 
-# ShapelyFeature creates a polygon, so for point data we can just use ax.plot()
-town_handle = ax.plot(towns.geometry.x, towns.geometry.y, 's', color='0.5', ms=6, transform=ccrs.PlateCarree())
+# split the dataset into Towns and Cities
+town_points = towns.loc[towns['STATUS'] == 'Town']
+city_points = towns.loc[towns['STATUS'] == 'City']
+
+# ShapelyFeature creates a polygon, so for point data we can just use ax.plot().  Plot Towns as grey squares
+town_handle = ax.plot(town_points.geometry.x, town_points.geometry.y, 's', color='0.5', ms=6, transform=ccrs.PlateCarree())
+
+# ShapelyFeature creates a polygon, so for point data we can just use ax.plot().  Plot Cities as black triangles
+city_handle = ax.plot(city_points.geometry.x, city_points.geometry.y, '^', color='k', ms=7, transform=ccrs.PlateCarree())
 
 # generate a list of handles for the county datasets
 # first, we add the list of names, then the list of colors, and finally we set the transparency
@@ -153,8 +177,8 @@ nice_names = [name.title() for name in county_names]
 
 # ax.legend() takes a list of handles and a list of labels corresponding to the objects 
 # you want to add to the legend
-handles = county_handles + water_handle + river_handle + town_handle # use '+' to concatenate (combine) lists
-labels = nice_names + ['Lakes', 'Rivers', 'Towns']
+handles = county_handles + water_handle + river_handle + town_handle + city_handle # use '+' to concatenate (combine) lists
+labels = nice_names + ['Lakes', 'Rivers', 'Towns', 'Cities']
 
 leg = ax.legend(handles, labels, title='Legend', title_fontsize=12, 
                  fontsize=10, loc='upper left', frameon=True, framealpha=1)
@@ -162,8 +186,8 @@ leg = ax.legend(handles, labels, title='Legend', title_fontsize=12,
 gridlines = ax.gridlines(draw_labels=True, # draw  labels for the grid lines
                          xlocs=[-8, -7.5, -7, -6.5, -6, -5.5], # add longitude lines at 0.5 deg intervals
                          ylocs=[54, 54.5, 55, 55.5]) # add latitude lines at 0.5 deg intervals
-gridlines.left_labels = False # turn off the left-side labels
-gridlines.bottom_labels = False # turn off the bottom labels
+gridlines.right_labels = False # turn off the right-side labels
+gridlines.top_labels = False # turn off the top labels
 
 # add the text labels for the towns
 for ind, row in towns.iterrows(): # towns.iterrows() returns the index and row
